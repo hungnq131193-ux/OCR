@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>OCR Tiếng Việt - Email Support</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { font-family: 'Inter', sans-serif; touch-action: pan-y; }
+        .range-slider {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 6px;
+            border-radius: 5px;
+            background: #e2e8f0;
+            outline: none;
+        }
+        .range-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #2563eb;
+            cursor: pointer;
+            border: 2px solid white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        }
+    </style>
+</head>
+<body class="bg-gray-50 h-screen flex flex-col overflow-hidden">
+
+    <!-- 1. Màn hình chọn ảnh / Camera -->
+    <div id="screen-input" class="flex-grow flex flex-col items-center justify-center p-6 space-y-8 animate-fade-in">
+        <div class="text-center space-y-2">
+            <h1 class="text-2xl font-bold text-gray-800 tracking-tight">VietOCR <span class="text-blue-600">Pro</span></h1>
+            <p class="text-gray-500 text-sm max-w-xs mx-auto">Chụp, chỉnh sửa và gửi Email văn bản nhanh chóng.</p>
+        </div>
+
+        <div class="w-full max-w-sm space-y-4">
+            <!-- Camera Button -->
+            <button id="btn-camera" class="w-full bg-blue-600 active:bg-blue-700 text-white p-4 rounded-2xl shadow-lg shadow-blue-200 flex items-center justify-center gap-3 transition-transform active:scale-95">
+                <i class="fa-solid fa-camera text-xl"></i>
+                <span class="font-semibold text-lg">Chụp ảnh mới</span>
+            </button>
+            
+            <!-- Upload Button -->
+            <div class="relative">
+                <input type="file" id="inp-file" accept="image/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
+                <button class="w-full bg-white border-2 border-dashed border-gray-300 text-gray-600 p-4 rounded-2xl flex items-center justify-center gap-3 hover:bg-gray-50 hover:border-blue-300 hover:text-blue-500 transition-colors">
+                    <i class="fa-solid fa-image text-xl"></i>
+                    <span class="font-medium">Chọn ảnh từ thư viện</span>
+                </button>
+            </div>
+        </div>
+        
+        <!-- Camera UI (Overlay) -->
+        <div id="camera-overlay" class="fixed inset-0 bg-black z-50 hidden flex flex-col">
+            <video id="video-feed" class="flex-grow w-full h-full object-cover" autoplay playsinline></video>
+            
+            <div class="absolute top-0 left-0 w-full p-4 flex justify-end">
+                <button id="btn-close-cam" class="text-white bg-black/40 w-10 h-10 rounded-full backdrop-blur-sm"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            
+            <!-- Focus Guide -->
+            <div class="absolute inset-0 pointer-events-none flex items-center justify-center">
+                <div class="w-[85%] h-[65%] border border-white/30 rounded-lg relative">
+                    <div class="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-blue-400 -mt-1 -ml-1 rounded-tl-lg"></div>
+                    <div class="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-blue-400 -mt-1 -mr-1 rounded-tr-lg"></div>
+                    <div class="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-blue-400 -mb-1 -ml-1 rounded-bl-lg"></div>
+                    <div class="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-blue-400 -mb-1 -mr-1 rounded-br-lg"></div>
+                </div>
+            </div>
+
+            <div class="h-28 bg-black/80 flex items-center justify-center shrink-0">
+                <button id="btn-capture" class="w-16 h-16 bg-white rounded-full border-4 border-gray-400 ring-2 ring-white active:scale-90 transition-all"></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. Màn hình Chỉnh sửa & Kết quả -->
+    <div id="screen-editor" class="hidden flex-col h-full bg-white">
+        <!-- Top Bar -->
+        <div class="h-14 border-b border-gray-200 flex items-center justify-between px-4 shrink-0 bg-white z-20">
+            <button id="btn-back" class="text-gray-500 p-2 hover:bg-gray-100 rounded-full"><i class="fa-solid fa-arrow-left"></i></button>
+            <h2 class="font-semibold text-gray-800">Điều chỉnh ảnh</h2>
+            <div class="w-8"></div>
+        </div>
+
+        <!-- Canvas Area -->
+        <div class="flex-grow bg-gray-100 relative overflow-hidden flex items-center justify-center p-2">
+            <canvas id="canvas-preview" class="max-w-full max-h-full object-contain shadow-lg border border-gray-300"></canvas>
+            <canvas id="canvas-hidden" class="hidden"></canvas>
+        </div>
+
+        <!-- Controls & OCR -->
+        <div class="bg-white border-t border-gray-200 shadow-[0_-5px_15px_rgba(0,0,0,0.05)] shrink-0 z-20 rounded-t-2xl">
+            <div id="controls-panel" class="p-5 space-y-5">
+                <!-- Contrast -->
+                <div class="space-y-2">
+                    <div class="flex justify-between text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                        <span>Độ tương phản</span>
+                        <span id="val-contrast">100%</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <i class="fa-solid fa-circle-half-stroke text-gray-400 text-sm"></i>
+                        <input type="range" id="slider-contrast" min="0" max="200" value="100" class="range-slider">
+                    </div>
+                </div>
+
+                <!-- Brightness -->
+                <div class="space-y-2">
+                    <div class="flex justify-between text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                        <span>Độ sáng</span>
+                        <span id="val-brightness">0</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <i class="fa-regular fa-sun text-gray-400 text-sm"></i>
+                        <input type="range" id="slider-brightness" min="-100" max="100" value="0" class="range-slider">
+                    </div>
+                </div>
+
+                <div class="flex gap-3 pt-2">
+                    <button id="btn-auto-fix" class="flex-1 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-100 rounded-lg hover:bg-blue-100">
+                        <i class="fa-solid fa-wand-magic-sparkles mr-1"></i>Tự động sửa
+                    </button>
+                </div>
+            </div>
+
+            <div class="p-4 bg-gray-50 border-t border-gray-100">
+                <button id="btn-ocr" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-md transition-all flex items-center justify-center gap-2">
+                    <span>Đọc văn bản</span>
+                    <i class="fa-solid fa-bolt"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. Kết quả Modal (Overlay) -->
+    <div id="modal-result" class="fixed inset-0 bg-black/50 z-50 hidden flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-sm transition-opacity">
+        <div class="bg-white w-full sm:max-w-lg h-[85vh] sm:h-auto sm:max-h-[80vh] rounded-t-2xl sm:rounded-2xl flex flex-col shadow-2xl animate-slide-up">
+            
+            <!-- Modal Header -->
+            <div class="px-5 py-4 border-b border-gray-100 flex justify-between items-center">
+                <h3 class="font-bold text-lg text-gray-800 flex items-center gap-2">
+                    <i class="fa-solid fa-file-lines text-blue-500"></i> Kết quả
+                </h3>
+                <button id="btn-close-result" class="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+
+            <!-- Progress State -->
+            <div id="ocr-progress" class="hidden p-8 text-center flex-grow flex flex-col items-center justify-center">
+                <div class="w-16 h-16 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin mb-4"></div>
+                <h4 class="text-gray-800 font-medium mb-1" id="status-main">Đang phân tích...</h4>
+                <p class="text-gray-500 text-sm mb-4" id="status-detail">Vui lòng đợi</p>
+                <div class="w-48 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div id="progress-bar" class="h-full bg-blue-500 w-0 transition-all duration-300"></div>
+                </div>
+            </div>
+
+            <!-- Result State -->
+            <div id="ocr-content" class="flex-grow flex flex-col p-4 hidden h-full overflow-hidden">
+                <textarea id="txt-output" class="flex-grow w-full p-4 bg-gray-50 border border-gray-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 leading-relaxed font-sans text-base mb-4" readonly></textarea>
+                
+                <!-- Action Buttons -->
+                <div class="flex gap-3 shrink-0">
+                    <button id="btn-copy" class="flex-1 bg-white border border-gray-300 text-gray-700 font-semibold py-3 rounded-xl hover:bg-gray-50 flex items-center justify-center gap-2 transition-colors">
+                        <i class="fa-regular fa-copy"></i> Sao chép
+                    </button>
+                    <button id="btn-email" class="flex-1 bg-blue-600 text-white font-semibold py-3 rounded-xl hover:bg-blue-700 flex items-center justify-center gap-2 shadow-sm transition-colors">
+                        <i class="fa-solid fa-envelope"></i> Gửi Email
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const screenInput = document.getElementById('screen-input');
+        const screenEditor = document.getElementById('screen-editor');
+        const cameraOverlay = document.getElementById('camera-overlay');
+        const videoFeed = document.getElementById('video-feed');
+        const canvasPreview = document.getElementById('canvas-preview');
+        const canvasHidden = document.getElementById('canvas-hidden');
+        const sliderContrast = document.getElementById('slider-contrast');
+        const sliderBrightness = document.getElementById('slider-brightness');
+        const valContrast = document.getElementById('val-contrast');
+        const valBrightness = document.getElementById('val-brightness');
+        const modalResult = document.getElementById('modal-result');
+        const ocrProgress = document.getElementById('ocr-progress');
+        const ocrContent = document.getElementById('ocr-content');
+        const progressBar = document.getElementById('progress-bar');
+        const statusMain = document.getElementById('status-main');
+        const txtOutput = document.getElementById('txt-output');
+
+        let stream = null;
+        let worker = null;
+
+        // --- Navigation ---
+        function switchScreen(screenName) {
+            if (screenName === 'editor') {
+                screenInput.classList.add('hidden');
+                screenEditor.classList.remove('hidden');
+                screenEditor.classList.add('flex');
+            } else {
+                screenEditor.classList.add('hidden');
+                screenEditor.classList.remove('flex');
+                screenInput.classList.remove('hidden');
+                stopCamera();
+            }
+        }
+        document.getElementById('btn-back').onclick = () => switchScreen('input');
+        document.getElementById('btn-close-result').onclick = () => modalResult.classList.add('hidden');
+
+        // --- Camera & File Input ---
+        document.getElementById('btn-camera').onclick = async () => {
+            try {
+                cameraOverlay.classList.remove('hidden');
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment', width: {ideal: 1920} }
+                });
+                videoFeed.srcObject = stream;
+            } catch (err) {
+                alert("Không thể mở Camera. Hãy thử dùng trình duyệt khác hoặc kiểm tra quyền truy cập.");
+                cameraOverlay.classList.add('hidden');
+            }
+        };
+
+        document.getElementById('btn-close-cam').onclick = stopCamera;
+
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+            cameraOverlay.classList.add('hidden');
+        }
+
+        document.getElementById('btn-capture').onclick = () => {
+            loadImageToCanvas(videoFeed, videoFeed.videoWidth, videoFeed.videoHeight);
+            stopCamera();
+        };
+
+        document.getElementById('inp-file').onchange = (e) => {
+            if(e.target.files[0]) {
+                const img = new Image();
+                img.onload = () => loadImageToCanvas(img, img.width, img.height);
+                img.src = URL.createObjectURL(e.target.files[0]);
+            }
+        };
+
+        // --- Image Processing (Filter Logic) ---
+        function loadImageToCanvas(source, w, h) {
+            const maxW = 1000; // Optimize for speed
+            let finalW = w;
+            let finalH = h;
+            
+            if (w > maxW) {
+                finalW = maxW;
+                finalH = (h / w) * maxW;
+            }
+
+            canvasHidden.width = finalW;
+            canvasHidden.height = finalH;
+            canvasPreview.width = finalW;
+            canvasPreview.height = finalH;
+
+            const ctx = canvasHidden.getContext('2d');
+            ctx.drawImage(source, 0, 0, finalW, finalH);
+            
+            // Reset to default
+            sliderContrast.value = 100;
+            sliderBrightness.value = 0;
+            updateFilterDisplay();
+            applyFilters();
+            switchScreen('editor');
+        }
+
+        function applyFilters() {
+            const ctxHidden = canvasHidden.getContext('2d');
+            const ctxPreview = canvasPreview.getContext('2d');
+            const w = canvasHidden.width;
+            const h = canvasHidden.height;
+            const imgData = ctxHidden.getImageData(0, 0, w, h);
+            const data = imgData.data;
+
+            const contrast = parseInt(sliderContrast.value);
+            const brightness = parseInt(sliderBrightness.value);
+            const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
+
+            for (let i = 0; i < data.length; i += 4) {
+                let gray = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
+                gray += brightness;
+                gray = factor * (gray - 128) + 128;
+                gray = Math.max(0, Math.min(255, gray));
+
+                data[i] = gray;
+                data[i+1] = gray;
+                data[i+2] = gray;
+            }
+            ctxPreview.putImageData(imgData, 0, 0);
+        }
+
+        function updateFilterDisplay() {
+            valContrast.innerText = sliderContrast.value + '%';
+            valBrightness.innerText = sliderBrightness.value;
+        }
+
+        [sliderContrast, sliderBrightness].forEach(el => {
+            el.addEventListener('input', () => {
+                updateFilterDisplay();
+                applyFilters();
+            });
+        });
+
+        document.getElementById('btn-auto-fix').onclick = () => {
+            sliderContrast.value = 140;
+            sliderBrightness.value = 15;
+            updateFilterDisplay();
+            applyFilters();
+        };
+
+        // --- OCR Logic ---
+        document.getElementById('btn-ocr').onclick = async () => {
+            modalResult.classList.remove('hidden');
+            ocrProgress.classList.remove('hidden');
+            ocrContent.classList.add('hidden');
+            txtOutput.value = "";
+
+            try {
+                if (!worker) {
+                    statusMain.innerText = "Đang tải dữ liệu...";
+                    worker = await Tesseract.createWorker('vie', 1, {
+                        logger: m => {
+                            if(m.status === 'recognizing text') {
+                                statusMain.innerText = "Đang đọc văn bản...";
+                                progressBar.style.width = Math.round(m.progress * 100) + '%';
+                            }
+                        }
+                    });
+                    await worker.setParameters({
+                        tessedit_pageseg_mode: Tesseract.PSM.AUTO,
+                    });
+                }
+
+                statusMain.innerText = "Đang xử lý...";
+                progressBar.style.width = '10%';
+                const result = await worker.recognize(canvasPreview);
+                progressBar.style.width = '100%';
+                
+                setTimeout(() => {
+                    ocrProgress.classList.add('hidden');
+                    ocrContent.classList.remove('hidden');
+                    txtOutput.value = result.data.text;
+                }, 500);
+
+            } catch (err) {
+                alert("Lỗi: " + err.message);
+                modalResult.classList.add('hidden');
+            }
+        };
+
+        // --- Copy Logic ---
+        document.getElementById('btn-copy').onclick = function() {
+            txtOutput.select();
+            document.execCommand('copy');
+            const original = this.innerHTML;
+            this.innerHTML = `<i class="fa-solid fa-check text-green-600"></i> Đã sao chép`;
+            this.classList.add('bg-green-50', 'border-green-300');
+            setTimeout(() => {
+                this.innerHTML = original;
+                this.classList.remove('bg-green-50', 'border-green-300');
+            }, 2000);
+        };
+
+        // --- EMAIL Logic (New Feature) ---
+        document.getElementById('btn-email').onclick = function() {
+            const text = txtOutput.value;
+            if (!text || text.trim() === "") {
+                alert("Chưa có văn bản để gửi!");
+                return;
+            }
+
+            const subject = "Kết quả Scan OCR Tiếng Việt";
+            // encodeURIComponent giúp giữ nguyên dấu tiếng Việt và xuống dòng
+            const body = encodeURIComponent(text);
+            
+            // Tạo link mailto
+            const mailtoLink = `mailto:?subject=${encodeURIComponent(subject)}&body=${body}`;
+            
+            // Mở ứng dụng mail
+            window.location.href = mailtoLink;
+        };
+
+    </script>
+</body>
+</html>
+
