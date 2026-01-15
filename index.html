@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>VietOCR Pro (PWA Camera + Vie/Eng)</title>
+  <title>VietOCR Pro (PWA)</title>
 
-  <!-- PWA basics (manifest/sw bạn đã có thì giữ) -->
+  <!-- PWA -->
   <meta name="theme-color" content="#2563eb" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -18,12 +18,12 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
-  <!-- OCR: Tesseract.js (WASM port of Tesseract engine from https://github.com/tesseract-ocr/tesseract) -->
+  <!-- OCR: Tesseract.js (WASM port of Tesseract engine: https://github.com/tesseract-ocr/tesseract) -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
   <style>
     body { font-family: 'Inter', sans-serif; touch-action: pan-y; }
-    /* mobile PWA viewport */
+    /* mobile PWA viewport (khắc phục 100vh sai) */
     .app-h { height: 100dvh; }
 
     .range-slider {
@@ -56,6 +56,9 @@
 
 <body class="bg-gray-50 app-h flex flex-col overflow-hidden">
 
+  <!-- Native camera capture fallback (ẩn) -->
+  <input id="inp-capture" type="file" accept="image/*" capture="environment" class="hidden" />
+
   <!-- Screen: Input -->
   <div id="screen-input" class="flex-grow flex flex-col items-center justify-center p-6 space-y-8 animate-fade-in">
     <div class="text-center space-y-2">
@@ -63,7 +66,7 @@
         VietOCR <span class="text-blue-600">Pro</span>
       </h1>
       <p class="text-gray-500 text-sm max-w-xs mx-auto">
-        Camera chuẩn PWA • OCR tiếng Việt + tiếng Anh • Sao chép & Email.
+        PWA • Camera ổn định • OCR tiếng Việt + tiếng Anh • Sao chép & Email.
       </p>
     </div>
 
@@ -84,7 +87,7 @@
         </button>
       </div>
 
-      <!-- Language mode -->
+      <!-- OCR language -->
       <div class="bg-white border border-gray-200 rounded-2xl p-4">
         <div class="flex items-center justify-between mb-2">
           <div class="text-sm font-semibold text-gray-800">Chế độ OCR</div>
@@ -96,19 +99,18 @@
           <option value="eng">Tiếng Anh (Eng)</option>
         </select>
         <div class="text-xs text-gray-500 mt-2">
-          Gợi ý: nếu văn bản thuần Việt, chọn “Vie” để nhanh hơn. Nếu lẫn 2 ngôn ngữ, để “Vie+Eng”.
+          Nếu văn bản thuần Việt, chọn “Vie” để nhanh hơn. Văn bản lẫn 2 ngôn ngữ, để “Vie+Eng”.
         </div>
       </div>
     </div>
 
-    <!-- Camera Overlay -->
+    <!-- Camera Overlay (web camera) -->
     <div id="camera-overlay" class="fixed inset-0 bg-black z-50 hidden relative">
       <video id="video-feed" class="absolute inset-0 w-full h-full object-cover" autoplay playsinline muted></video>
 
       <div class="absolute top-0 left-0 w-full p-4 flex justify-between z-20">
         <div class="text-white text-sm bg-black/35 px-3 py-2 rounded-full backdrop-blur-sm">
-          <i class="fa-solid fa-circle text-green-400 mr-2"></i>
-          Camera PWA
+          <i class="fa-solid fa-video mr-2"></i> Web Camera
         </div>
         <button id="btn-close-cam"
           class="text-white bg-black/40 w-10 h-10 rounded-full backdrop-blur-sm flex items-center justify-center">
@@ -126,7 +128,7 @@
         </div>
       </div>
 
-      <!-- Capture bar fixed bottom + safe-area (fix “mất nút chụp”) -->
+      <!-- Capture fixed bottom + safe-area -->
       <div class="fixed left-0 right-0 bottom-0 bg-black/80 flex items-center justify-center z-30"
         style="padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); height: 110px;">
         <button id="btn-capture"
@@ -186,7 +188,7 @@
         </div>
       </div>
 
-      <div class="p-4 bg-gray-50 border-t border-gray-100 space-y-3">
+      <div class="p-4 bg-gray-50 border-t border-gray-100">
         <button id="btn-ocr"
           class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-md transition-all flex items-center justify-center gap-2">
           <span>Đọc văn bản</span>
@@ -239,7 +241,7 @@
   </div>
 
   <script>
-    // ---------------- PWA: register SW (nếu bạn có sw.js) ----------------
+    // ---------------- Register SW ----------------
     (function registerSW() {
       if (!("serviceWorker" in navigator)) return;
       window.addEventListener("load", async () => {
@@ -270,6 +272,7 @@
     const txtOutput = document.getElementById('txt-output');
 
     const selLang = document.getElementById('sel-lang');
+    const inpCapture = document.getElementById('inp-capture');
 
     let stream = null;
     let worker = null;
@@ -288,10 +291,11 @@
         stopCamera();
       }
     }
+
     document.getElementById('btn-back').onclick = () => switchScreen('input');
     document.getElementById('btn-close-result').onclick = () => modalResult.classList.add('hidden');
+    document.getElementById('btn-close-cam').onclick = () => stopCamera();
 
-    // ---------------- Camera: PWA-safe ----------------
     function lockScroll(locked) {
       if (locked) {
         document.documentElement.style.overflow = "hidden";
@@ -302,32 +306,40 @@
       }
     }
 
-    async function openCamera() {
+    // ---------------- Native capture fallback ----------------
+    inpCapture.onchange = (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+
+      const img = new Image();
+      img.onload = () => loadImageToCanvas(img, img.width, img.height);
+      img.src = URL.createObjectURL(file);
+
+      e.target.value = "";
+    };
+
+    function openNativeCamera() {
+      // đảm bảo đóng overlay web camera trước
+      stopCamera();
+      inpCapture.click();
+    }
+
+    // ---------------- Web camera (getUserMedia) with watchdog fallback ----------------
+    async function openWebCamera() {
       cameraOverlay.classList.remove('hidden');
       lockScroll(true);
 
-      // playsinline/muted giúp tránh bị “native fullscreen”
       videoFeed.setAttribute("playsinline", "true");
       videoFeed.setAttribute("webkit-playsinline", "true");
       videoFeed.muted = true;
 
-      // Ưu tiên camera sau (environment). exact giúp nhiều máy/PWA bám đúng camera sau.
-      // Nếu exact fail, fallback sang ideal.
+      // exact -> ideal fallback
       const constraintsExact = {
-        video: {
-          facingMode: { exact: "environment" },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 }
-        },
+        video: { facingMode: { exact: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
         audio: false
       };
-
       const constraintsIdeal = {
-        video: {
-          facingMode: { ideal: "environment" },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 }
-        },
+        video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
         audio: false
       };
 
@@ -337,14 +349,20 @@
         try {
           stream = await navigator.mediaDevices.getUserMedia(constraintsIdeal);
         } catch (err) {
-          stopCamera();
-          alert("Không thể mở camera. Hãy kiểm tra quyền camera, hoặc thử Chrome (không qua WebView).");
+          // getUserMedia fail -> native capture
+          openNativeCamera();
           return;
         }
       }
 
       videoFeed.srcObject = stream;
       try { await videoFeed.play(); } catch (e) {}
+
+      // WATCHDOG: nếu sau 900ms vẫn không có preview -> native capture
+      setTimeout(() => {
+        const hasPreview = videoFeed.videoWidth && videoFeed.videoHeight;
+        if (!hasPreview) openNativeCamera();
+      }, 900);
     }
 
     function stopCamera() {
@@ -357,19 +375,26 @@
       lockScroll(false);
     }
 
-    document.getElementById('btn-camera').onclick = openCamera;
-    document.getElementById('btn-close-cam').onclick = stopCamera;
+    document.getElementById('btn-camera').onclick = async () => {
+      // Nếu không secure context (không https), getUserMedia sẽ fail -> native
+      if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        openNativeCamera();
+        return;
+      }
+      await openWebCamera();
+    };
 
     document.getElementById('btn-capture').onclick = () => {
       if (!videoFeed.videoWidth || !videoFeed.videoHeight) {
-        alert("Camera chưa sẵn sàng. Chờ 1 giây rồi chụp lại.");
+        // chưa sẵn sàng -> fallback ngay
+        openNativeCamera();
         return;
       }
       loadImageToCanvas(videoFeed, videoFeed.videoWidth, videoFeed.videoHeight);
       stopCamera();
     };
 
-    // ---------------- Upload ----------------
+    // ---------------- Upload library ----------------
     document.getElementById('inp-file').onchange = (e) => {
       const file = e.target.files && e.target.files[0];
       if (!file) return;
@@ -380,8 +405,7 @@
 
     // ---------------- Image pipeline ----------------
     function loadImageToCanvas(source, w, h) {
-      // cân bằng: đủ nét cho OCR nhưng không quá nặng
-      const maxW = 1200;
+      const maxW = 1200; // speed/quality balance
       let finalW = w, finalH = h;
       if (w > maxW) {
         finalW = maxW;
@@ -406,7 +430,6 @@
     function applyFilters() {
       const ctxHidden = canvasHidden.getContext('2d', { willReadFrequently: true });
       const ctxPreview = canvasPreview.getContext('2d', { willReadFrequently: true });
-
       const w = canvasHidden.width;
       const h = canvasHidden.height;
 
@@ -424,7 +447,6 @@
         gray = Math.max(0, Math.min(255, gray));
         data[i] = data[i + 1] = data[i + 2] = gray;
       }
-
       ctxPreview.putImageData(imgData, 0, 0);
     }
 
@@ -454,16 +476,14 @@
       applyFilters();
     };
 
-    // ---------------- OCR: Vie + Eng ----------------
+    // ---------------- OCR (Vie/Eng) ----------------
     async function ensureWorker(lang) {
       if (worker && currentLang === lang) return;
 
-      // Nếu đã có worker nhưng đổi ngôn ngữ -> terminate và tạo lại (ổn định nhất cho mobile)
       if (worker && currentLang !== lang) {
-        try { await worker.terminate(); } catch(e) {}
+        try { await worker.terminate(); } catch (e) {}
         worker = null;
       }
-
       currentLang = lang;
 
       statusMain.innerText = "Đang tải OCR...";
@@ -514,7 +534,6 @@
           ocrContent.classList.remove('hidden');
           txtOutput.value = (result && result.data && result.data.text) ? result.data.text : "";
         }, 200);
-
       } catch (err) {
         alert("Lỗi OCR: " + (err && err.message ? err.message : String(err)));
         modalResult.classList.add('hidden');
@@ -525,6 +544,7 @@
     document.getElementById('btn-copy').onclick = function() {
       txtOutput.select();
       document.execCommand('copy');
+
       const original = this.innerHTML;
       this.innerHTML = `<i class="fa-solid fa-check text-green-600"></i> Đã sao chép`;
       this.classList.add('bg-green-50', 'border-green-300');
