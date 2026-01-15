@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>VietOCR Pro (PWA)</title>
+  <title>VietOCR Pro (PWA Camera + Vie/Eng)</title>
 
-  <!-- PWA -->
+  <!-- PWA basics (manifest/sw bạn đã có thì giữ) -->
   <meta name="theme-color" content="#2563eb" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -18,11 +18,14 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
-  <!-- OCR -->
+  <!-- OCR: Tesseract.js (WASM port of Tesseract engine from https://github.com/tesseract-ocr/tesseract) -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
   <style>
     body { font-family: 'Inter', sans-serif; touch-action: pan-y; }
+    /* mobile PWA viewport */
+    .app-h { height: 100dvh; }
+
     .range-slider {
       -webkit-appearance: none;
       width: 100%;
@@ -43,27 +46,24 @@
       box-shadow: 0 1px 3px rgba(0,0,0,0.3);
     }
 
-    /* PWA: tránh 100vh bị sai trên mobile */
-    .app-h { height: 100dvh; }
-
     @keyframes fadeIn { from {opacity:0; transform:translateY(8px);} to {opacity:1; transform:translateY(0);} }
-    .animate-fade-in { animation: fadeIn .25s ease-out; }
+    .animate-fade-in { animation: fadeIn .2s ease-out; }
 
     @keyframes slideUp { from {transform:translateY(24px); opacity:0;} to {transform:translateY(0); opacity:1;} }
-    .animate-slide-up { animation: slideUp .25s ease-out; }
+    .animate-slide-up { animation: slideUp .2s ease-out; }
   </style>
 </head>
 
 <body class="bg-gray-50 app-h flex flex-col overflow-hidden">
 
-  <!-- 1. Screen: Input -->
+  <!-- Screen: Input -->
   <div id="screen-input" class="flex-grow flex flex-col items-center justify-center p-6 space-y-8 animate-fade-in">
     <div class="text-center space-y-2">
       <h1 class="text-2xl font-bold text-gray-800 tracking-tight">
         VietOCR <span class="text-blue-600">Pro</span>
       </h1>
       <p class="text-gray-500 text-sm max-w-xs mx-auto">
-        Chụp, chỉnh ảnh, OCR tiếng Việt và gửi Email nhanh chóng.
+        Camera chuẩn PWA • OCR tiếng Việt + tiếng Anh • Sao chép & Email.
       </p>
     </div>
 
@@ -83,19 +83,40 @@
           <span class="font-medium">Chọn ảnh từ thư viện</span>
         </button>
       </div>
+
+      <!-- Language mode -->
+      <div class="bg-white border border-gray-200 rounded-2xl p-4">
+        <div class="flex items-center justify-between mb-2">
+          <div class="text-sm font-semibold text-gray-800">Chế độ OCR</div>
+          <div class="text-xs text-gray-500">Mặc định: Việt + Anh</div>
+        </div>
+        <select id="sel-lang" class="w-full border border-gray-200 rounded-xl p-3 bg-gray-50 text-gray-800">
+          <option value="vie+eng" selected>Tự động (Vie + Eng)</option>
+          <option value="vie">Ưu tiên tiếng Việt (Vie)</option>
+          <option value="eng">Tiếng Anh (Eng)</option>
+        </select>
+        <div class="text-xs text-gray-500 mt-2">
+          Gợi ý: nếu văn bản thuần Việt, chọn “Vie” để nhanh hơn. Nếu lẫn 2 ngôn ngữ, để “Vie+Eng”.
+        </div>
+      </div>
     </div>
 
     <!-- Camera Overlay -->
     <div id="camera-overlay" class="fixed inset-0 bg-black z-50 hidden relative">
-      <video id="video-feed" class="absolute inset-0 w-full h-full object-cover" autoplay playsinline></video>
+      <video id="video-feed" class="absolute inset-0 w-full h-full object-cover" autoplay playsinline muted></video>
 
-      <div class="absolute top-0 left-0 w-full p-4 flex justify-end z-20">
+      <div class="absolute top-0 left-0 w-full p-4 flex justify-between z-20">
+        <div class="text-white text-sm bg-black/35 px-3 py-2 rounded-full backdrop-blur-sm">
+          <i class="fa-solid fa-circle text-green-400 mr-2"></i>
+          Camera PWA
+        </div>
         <button id="btn-close-cam"
           class="text-white bg-black/40 w-10 h-10 rounded-full backdrop-blur-sm flex items-center justify-center">
           <i class="fa-solid fa-xmark"></i>
         </button>
       </div>
 
+      <!-- Focus guide -->
       <div class="absolute inset-0 pointer-events-none flex items-center justify-center z-10">
         <div class="w-[85%] h-[65%] border border-white/30 rounded-lg relative">
           <div class="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-blue-400 -mt-1 -ml-1 rounded-tl-lg"></div>
@@ -105,7 +126,7 @@
         </div>
       </div>
 
-      <!-- FIX: Capture bar fixed bottom + safe-area -->
+      <!-- Capture bar fixed bottom + safe-area (fix “mất nút chụp”) -->
       <div class="fixed left-0 right-0 bottom-0 bg-black/80 flex items-center justify-center z-30"
         style="padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); height: 110px;">
         <button id="btn-capture"
@@ -114,7 +135,7 @@
     </div>
   </div>
 
-  <!-- 2. Screen: Editor -->
+  <!-- Screen: Editor -->
   <div id="screen-editor" class="hidden flex-col h-full bg-white">
     <div class="h-14 border-b border-gray-200 flex items-center justify-between px-4 shrink-0 bg-white z-20">
       <button id="btn-back" class="text-gray-500 p-2 hover:bg-gray-100 rounded-full">
@@ -158,10 +179,14 @@
             class="flex-1 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-100 rounded-lg hover:bg-blue-100">
             <i class="fa-solid fa-wand-magic-sparkles mr-1"></i>Tự động sửa
           </button>
+          <button id="btn-reset"
+            class="flex-1 py-2 text-sm font-medium text-gray-700 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100">
+            <i class="fa-solid fa-rotate-left mr-1"></i>Reset
+          </button>
         </div>
       </div>
 
-      <div class="p-4 bg-gray-50 border-t border-gray-100">
+      <div class="p-4 bg-gray-50 border-t border-gray-100 space-y-3">
         <button id="btn-ocr"
           class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-md transition-all flex items-center justify-center gap-2">
           <span>Đọc văn bản</span>
@@ -171,13 +196,13 @@
     </div>
   </div>
 
-  <!-- 3. Result Modal -->
+  <!-- Modal: Result -->
   <div id="modal-result"
     class="fixed inset-0 bg-black/50 z-50 hidden flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-sm transition-opacity">
     <div class="bg-white w-full sm:max-w-lg h-[85vh] sm:h-auto sm:max-h-[80vh] rounded-t-2xl sm:rounded-2xl flex flex-col shadow-2xl animate-slide-up">
       <div class="px-5 py-4 border-b border-gray-100 flex justify-between items-center">
         <h3 class="font-bold text-lg text-gray-800 flex items-center gap-2">
-          <i class="fa-solid fa-file-lines text-blue-500"></i> Kết quả
+          <i class="fa-solid fa-file-lines text-blue-500"></i> Kết quả OCR
         </h3>
         <button id="btn-close-result"
           class="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">
@@ -187,9 +212,9 @@
 
       <div id="ocr-progress" class="hidden p-8 text-center flex-grow flex flex-col items-center justify-center">
         <div class="w-16 h-16 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin mb-4"></div>
-        <h4 class="text-gray-800 font-medium mb-1" id="status-main">Đang phân tích...</h4>
+        <h4 class="text-gray-800 font-medium mb-1" id="status-main">Đang chuẩn bị...</h4>
         <p class="text-gray-500 text-sm mb-4" id="status-detail">Vui lòng đợi</p>
-        <div class="w-48 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+        <div class="w-56 h-1.5 bg-gray-100 rounded-full overflow-hidden">
           <div id="progress-bar" class="h-full bg-blue-500 w-0 transition-all duration-300"></div>
         </div>
       </div>
@@ -214,19 +239,15 @@
   </div>
 
   <script>
-    // ---------- PWA: Service Worker ----------
+    // ---------------- PWA: register SW (nếu bạn có sw.js) ----------------
     (function registerSW() {
       if (!("serviceWorker" in navigator)) return;
       window.addEventListener("load", async () => {
-        try {
-          await navigator.serviceWorker.register("./sw.js", { scope: "./" });
-        } catch (e) {
-          // im lặng: PWA không bắt buộc
-        }
+        try { await navigator.serviceWorker.register("./sw.js", { scope: "./" }); } catch (e) {}
       });
     })();
 
-    // ---------- DOM ----------
+    // ---------------- DOM ----------------
     const screenInput = document.getElementById('screen-input');
     const screenEditor = document.getElementById('screen-editor');
     const cameraOverlay = document.getElementById('camera-overlay');
@@ -248,10 +269,13 @@
     const statusDetail = document.getElementById('status-detail');
     const txtOutput = document.getElementById('txt-output');
 
+    const selLang = document.getElementById('sel-lang');
+
     let stream = null;
     let worker = null;
+    let currentLang = selLang.value;
 
-    // ---------- Navigation ----------
+    // ---------------- Navigation ----------------
     function switchScreen(screenName) {
       if (screenName === 'editor') {
         screenInput.classList.add('hidden');
@@ -267,60 +291,98 @@
     document.getElementById('btn-back').onclick = () => switchScreen('input');
     document.getElementById('btn-close-result').onclick = () => modalResult.classList.add('hidden');
 
-    // ---------- Camera ----------
-    document.getElementById('btn-camera').onclick = async () => {
-      try {
-        cameraOverlay.classList.remove('hidden');
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 } },
-          audio: false
-        });
-        videoFeed.srcObject = stream;
-
-        // iOS/Safari sometimes needs explicit play
-        const p = videoFeed.play();
-        if (p && typeof p.catch === "function") p.catch(() => {});
-      } catch (err) {
-        alert("Không thể mở Camera. Hãy thử dùng trình duyệt khác hoặc kiểm tra quyền truy cập.");
-        cameraOverlay.classList.add('hidden');
+    // ---------------- Camera: PWA-safe ----------------
+    function lockScroll(locked) {
+      if (locked) {
+        document.documentElement.style.overflow = "hidden";
+        document.body.style.overflow = "hidden";
+      } else {
+        document.documentElement.style.overflow = "";
+        document.body.style.overflow = "";
       }
-    };
+    }
 
-    document.getElementById('btn-close-cam').onclick = stopCamera;
+    async function openCamera() {
+      cameraOverlay.classList.remove('hidden');
+      lockScroll(true);
+
+      // playsinline/muted giúp tránh bị “native fullscreen”
+      videoFeed.setAttribute("playsinline", "true");
+      videoFeed.setAttribute("webkit-playsinline", "true");
+      videoFeed.muted = true;
+
+      // Ưu tiên camera sau (environment). exact giúp nhiều máy/PWA bám đúng camera sau.
+      // Nếu exact fail, fallback sang ideal.
+      const constraintsExact = {
+        video: {
+          facingMode: { exact: "environment" },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
+        },
+        audio: false
+      };
+
+      const constraintsIdeal = {
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
+        },
+        audio: false
+      };
+
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraintsExact);
+      } catch (e) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(constraintsIdeal);
+        } catch (err) {
+          stopCamera();
+          alert("Không thể mở camera. Hãy kiểm tra quyền camera, hoặc thử Chrome (không qua WebView).");
+          return;
+        }
+      }
+
+      videoFeed.srcObject = stream;
+      try { await videoFeed.play(); } catch (e) {}
+    }
 
     function stopCamera() {
       if (stream) {
-        stream.getTracks().forEach(track => track.stop());
+        stream.getTracks().forEach(t => t.stop());
         stream = null;
       }
+      videoFeed.srcObject = null;
       cameraOverlay.classList.add('hidden');
+      lockScroll(false);
     }
+
+    document.getElementById('btn-camera').onclick = openCamera;
+    document.getElementById('btn-close-cam').onclick = stopCamera;
 
     document.getElementById('btn-capture').onclick = () => {
       if (!videoFeed.videoWidth || !videoFeed.videoHeight) {
-        alert("Camera chưa sẵn sàng. Hãy đợi 1 giây rồi chụp lại.");
+        alert("Camera chưa sẵn sàng. Chờ 1 giây rồi chụp lại.");
         return;
       }
       loadImageToCanvas(videoFeed, videoFeed.videoWidth, videoFeed.videoHeight);
       stopCamera();
     };
 
-    // ---------- Upload ----------
+    // ---------------- Upload ----------------
     document.getElementById('inp-file').onchange = (e) => {
       const file = e.target.files && e.target.files[0];
       if (!file) return;
-
       const img = new Image();
       img.onload = () => loadImageToCanvas(img, img.width, img.height);
       img.src = URL.createObjectURL(file);
     };
 
-    // ---------- Image processing ----------
+    // ---------------- Image pipeline ----------------
     function loadImageToCanvas(source, w, h) {
-      const maxW = 1100; // cân bằng tốc độ/độ nét
-      let finalW = w;
-      let finalH = h;
-
+      // cân bằng: đủ nét cho OCR nhưng không quá nặng
+      const maxW = 1200;
+      let finalW = w, finalH = h;
       if (w > maxW) {
         finalW = maxW;
         finalH = (h / w) * maxW;
@@ -344,6 +406,7 @@
     function applyFilters() {
       const ctxHidden = canvasHidden.getContext('2d', { willReadFrequently: true });
       const ctxPreview = canvasPreview.getContext('2d', { willReadFrequently: true });
+
       const w = canvasHidden.width;
       const h = canvasHidden.height;
 
@@ -352,7 +415,6 @@
 
       const contrast = parseInt(sliderContrast.value, 10);
       const brightness = parseInt(sliderBrightness.value, 10);
-
       const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
 
       for (let i = 0; i < data.length; i += 4) {
@@ -360,11 +422,9 @@
         gray += brightness;
         gray = factor * (gray - 128) + 128;
         gray = Math.max(0, Math.min(255, gray));
-
-        data[i] = gray;
-        data[i + 1] = gray;
-        data[i + 2] = gray;
+        data[i] = data[i + 1] = data[i + 2] = gray;
       }
+
       ctxPreview.putImageData(imgData, 0, 0);
     }
 
@@ -381,28 +441,42 @@
     });
 
     document.getElementById('btn-auto-fix').onclick = () => {
-      sliderContrast.value = 140;
-      sliderBrightness.value = 15;
+      sliderContrast.value = 145;
+      sliderBrightness.value = 12;
       updateFilterDisplay();
       applyFilters();
     };
 
-    // ---------- OCR ----------
-    async function ensureWorker() {
-      if (worker) return;
+    document.getElementById('btn-reset').onclick = () => {
+      sliderContrast.value = 100;
+      sliderBrightness.value = 0;
+      updateFilterDisplay();
+      applyFilters();
+    };
 
-      statusMain.innerText = "Đang tải OCR tiếng Việt...";
-      statusDetail.innerText = "Tải lần đầu có thể mất vài giây.";
+    // ---------------- OCR: Vie + Eng ----------------
+    async function ensureWorker(lang) {
+      if (worker && currentLang === lang) return;
+
+      // Nếu đã có worker nhưng đổi ngôn ngữ -> terminate và tạo lại (ổn định nhất cho mobile)
+      if (worker && currentLang !== lang) {
+        try { await worker.terminate(); } catch(e) {}
+        worker = null;
+      }
+
+      currentLang = lang;
+
+      statusMain.innerText = "Đang tải OCR...";
+      statusDetail.innerText = "Lần đầu có thể mất vài giây.";
       progressBar.style.width = "5%";
 
-      worker = await Tesseract.createWorker('vie', 1, {
+      worker = await Tesseract.createWorker(lang, 1, {
         logger: m => {
           if (m.status === 'recognizing text') {
-            statusMain.innerText = "Đang đọc văn bản...";
+            statusMain.innerText = "Đang nhận diện...";
             statusDetail.innerText = "Vui lòng đợi.";
             progressBar.style.width = Math.round((m.progress || 0) * 100) + '%';
           } else if (m.status) {
-            // các trạng thái tải model
             statusMain.innerText = "Đang chuẩn bị OCR...";
             statusDetail.innerText = m.status;
           }
@@ -425,10 +499,11 @@
       statusDetail.innerText = "Vui lòng đợi.";
 
       try {
-        await ensureWorker();
+        const lang = selLang.value; // vie+eng / vie / eng
+        await ensureWorker(lang);
 
         statusMain.innerText = "Đang xử lý ảnh...";
-        statusDetail.innerText = "Đang tối ưu nhận diện.";
+        statusDetail.innerText = "Đang chạy OCR.";
         progressBar.style.width = "10%";
 
         const result = await worker.recognize(canvasPreview);
@@ -438,7 +513,7 @@
           ocrProgress.classList.add('hidden');
           ocrContent.classList.remove('hidden');
           txtOutput.value = (result && result.data && result.data.text) ? result.data.text : "";
-        }, 250);
+        }, 200);
 
       } catch (err) {
         alert("Lỗi OCR: " + (err && err.message ? err.message : String(err)));
@@ -446,32 +521,28 @@
       }
     };
 
-    // ---------- Copy ----------
-    document.getElementById('btn-copy').onclick = function () {
+    // ---------------- Copy + Email ----------------
+    document.getElementById('btn-copy').onclick = function() {
       txtOutput.select();
       document.execCommand('copy');
-
       const original = this.innerHTML;
       this.innerHTML = `<i class="fa-solid fa-check text-green-600"></i> Đã sao chép`;
       this.classList.add('bg-green-50', 'border-green-300');
-
       setTimeout(() => {
         this.innerHTML = original;
         this.classList.remove('bg-green-50', 'border-green-300');
       }, 2000);
     };
 
-    // ---------- Email ----------
-    document.getElementById('btn-email').onclick = function () {
+    document.getElementById('btn-email').onclick = function() {
       const text = txtOutput.value;
       if (!text || text.trim() === "") {
         alert("Chưa có văn bản để gửi!");
         return;
       }
-      const subject = "Kết quả Scan OCR Tiếng Việt";
+      const subject = "Kết quả Scan OCR";
       const body = encodeURIComponent(text);
-      const mailtoLink = `mailto:?subject=${encodeURIComponent(subject)}&body=${body}`;
-      window.location.href = mailtoLink;
+      window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${body}`;
     };
   </script>
 </body>
